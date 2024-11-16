@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "dotenv": "^16.4.5",
     "hono": "^4.6.10"
   },
   "name": "image-generation-from-image-hono",
