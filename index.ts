@@ -21,12 +21,17 @@ const generateImage = async (prompt: string): Promise<Uint8Array | null> => {
         },
         body: JSON.stringify({
           prompt,
-          negative_prompt:
-            "Images that are rough, images that do not identify the content specified in the prompt, or images that are not faithful to the propmt.",
+          negative_prompt: `
+          blurry, low quality, rough, distorted, incorrect colors, unrelated animals, cats, birds, short-haired, short fur, smooth fur, 
+          missing ribbon, wrong ear, missing ears, left ear ribbon, messy background, abstract elements, cartoonish, unrealistic lighting, 
+          overexposed, underexposed, incorrect proportions, fat, overweight, thin, skeletal, aggressive, scary, sad, angry, dull, 
+          wrong hair color, no bronze hair, black fur, gray fur, missing details, low contrast, muted colors, pixelated, low resolution,
+          text, watermark, logo, extra limbs, extra ears, missing legs, cropped, out of frame, incomplete, wrong breed, toy dog, wolf, fox, only two ears.
+          `,
           height: 512,
           width: 512,
           num_steps: 20,
-          guidance: 10000,
+          guidance: 1,
         }),
       }
     );
