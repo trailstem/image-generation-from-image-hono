@@ -1,1 +1,14 @@
-{ "dependencies": { "hono": "^4.6.10" } }
+{
+  "dependencies": {
+    "hono": "^4.6.10"
+  },
+  "name": "image-generation-from-image-hono",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
