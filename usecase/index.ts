@@ -11,6 +11,7 @@ export const makeApiRequest = async ({
   data,
   contentType,
 }: ApiRequestParams): Promise<Response> => {
+  console.log("url", `${config.url}${endpoint}`);
   const response = await fetch(`${config.url}${endpoint}`, {
     method: "POST",
     headers: {
@@ -21,7 +22,10 @@ export const makeApiRequest = async ({
   });
 
   if (!response.ok) {
-    throw new Error(`API Error: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(
+      `API Error: ${response.status} ${response.statusText} - ${errorText}`
+    );
   }
 
   return response;

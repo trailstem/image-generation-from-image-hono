@@ -87,41 +87,35 @@ app.post("/summarize", async (c) => {
 // インペインティング（画像の一部編集）エンドポイント
 app.post("/inpaint", async (c) => {
   try {
-    const {
-      prompt,
-      image_b64, // オプション
-      mask_b64, // オプション
-      height = 512,
-      width = 512,
-      numSteps = 20,
-      guidance = 7.5,
-      strength = 1,
-      seed,
-    } = await c.req.json();
-
-    if (!prompt) {
+    const { prompt, image_b64, mask_b64 } = await c.req.json();
+    if (!prompt)
       return c.json({ success: false, error: "Prompt is required" }, 400);
-    }
 
-    // デフォルト画像・マスクのURL（Cloudflareの公式ドキュメントのサンプル）
-    const defaultImageUrl =
-      "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog.png";
-    const defaultMaskUrl =
-      "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog-mask.png";
+    // ローカル画像のパス（適宜パスを調整してください）
+    const localImagePath = "./images/input.png";
+    const localMaskPath = "./images/mask.png";
 
-    // リクエストに画像・マスクが含まれていない場合、デフォルトのURLから取得してBase64変換
+    // リクエストに画像・マスクが含まれていない場合は、ローカルファイルからBase64変換を試みる
     const imageBase64 =
       image_b64 ||
-      (await fetch(defaultImageUrl)
-        .then((res) => res.arrayBuffer())
-        .then((buffer) => arrayBufferToBase64(buffer)));
+      (existsSync(localImagePath)
+        ? readFileSync(localImagePath).toString("base64")
+        : await fetch(
+            "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog.png"
+          )
+            .then((res) => res.arrayBuffer())
+            .then((buffer) => arrayBufferToBase64(buffer)));
     const maskBase64 =
       mask_b64 ||
-      (await fetch(defaultMaskUrl)
-        .then((res) => res.arrayBuffer())
-        .then((buffer) => arrayBufferToBase64(buffer)));
+      (existsSync(localMaskPath)
+        ? readFileSync(localMaskPath).toString("base64")
+        : await fetch(
+            "https://pub-1fb693cb11cc46b2b2f656f51e015a2c.r2.dev/dog-mask.png"
+          )
+            .then((res) => res.arrayBuffer())
+            .then((buffer) => arrayBufferToBase64(buffer)));
 
-    // Base64文字列をUint8Arrayに変換
+    // Base64からUint8Arrayに変換
     const imageBufferArray = Uint8Array.from(atob(imageBase64), (char) =>
       char.charCodeAt(0)
     );
@@ -129,30 +123,19 @@ app.post("/inpaint", async (c) => {
       char.charCodeAt(0)
     );
 
-    // モデルへ渡す入力データ
     const inputs = {
       prompt,
       image: [...imageBufferArray],
       mask: [...maskBufferArray],
-      height,
-      width,
-      num_steps: numSteps,
-      guidance,
-      strength,
-      seed,
     };
 
-    // Cloudflare APIへリクエスト（cURLでの例と同様）
     const response = await makeApiRequest({
-      endpoint: "/ai/run/@cf/runwayml/stable-diffusion-v1-5-inpainting",
+      endpoint: "/@cf/runwayml/stable-diffusion-v1-5-inpainting",
       data: JSON.stringify(inputs),
       contentType: "application/json",
     });
 
-    // レスポンスのArrayBufferからUint8Arrayへ変換（生成された画像データ）
     const imageData = new Uint8Array(await response.arrayBuffer());
-
-    // 画像保存処理（実装は環境に合わせて適宜変更してください）
     const filename = `inpainted_image_${Date.now()}.png`;
     const filePath = await saveImage(filename, imageData);
 
