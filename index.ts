@@ -1,104 +1,75 @@
 import { Hono } from "hono";
-import { writeFile } from "fs/promises";
-import { existsSync, mkdirSync } from "fs";
-import path from "path";
+import { saveImage } from "./utils";
+import { classifyImage, generateImage, summarizeText } from "./usecase";
 
 const app = new Hono();
-const CLOUDFLARE_API_URL = `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run`;
-const API_KEY = process.env.CLOUDFLARE_API_TOKEN;
-const OUTPUT_DIRECTORY = process.env.OUTPUT_DIRECTORY || "./generated_images";
-
-// 画像生成
-const generateImage = async (prompt: string): Promise<Uint8Array | null> => {
-  try {
-    const response = await fetch(
-      `${CLOUDFLARE_API_URL}/@cf/lykon/dreamshaper-8-lcm`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt,
-          negative_prompt: `
-          blurry, low quality, rough, distorted, incorrect colors, unrelated animals, cats, birds, short-haired, short fur, smooth fur, 
-          missing ribbon, wrong ear, missing ears, left ear ribbon, messy background, abstract elements, cartoonish, unrealistic lighting, 
-          overexposed, underexposed, incorrect proportions, fat, overweight, thin, skeletal, aggressive, scary, sad, angry, dull, 
-          wrong hair color, no bronze hair, black fur, gray fur, missing details, low contrast, muted colors, pixelated, low resolution,
-          text, watermark, logo, extra limbs, extra ears, missing legs, cropped, out of frame, incomplete, wrong breed, toy dog, wolf, fox, only two ears.
-          `,
-          height: 512,
-          width: 512,
-          num_steps: 20,
-          guidance: 1,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      console.error(`Failed to generate image: ${response.statusText}`);
-      return null;
-    }
-
-    const buffer = await response.arrayBuffer();
-    return new Uint8Array(buffer);
-  } catch (error) {
-    console.error("Error generating image:", error);
-    return null;
-  }
-};
-
-// 画像保存
-const saveImage = async (filename: string, data: Uint8Array) => {
-  try {
-    if (!existsSync(OUTPUT_DIRECTORY)) {
-      mkdirSync(OUTPUT_DIRECTORY, { recursive: true });
-    }
-
-    const filePath = path.join(OUTPUT_DIRECTORY, filename);
-    await writeFile(filePath, data);
-    console.log(`Image saved to ${filePath}`);
-    return filePath;
-  } catch (error) {
-    console.error("Error saving image:", error);
-    return null;
-  }
-};
-
 app.post("/generate", async (c) => {
-  const { prompt } = await c.req.json();
-
-  if (!prompt) {
-    return c.json({ error: "Prompt is required" }, 400);
-  }
-
   try {
-    // 画像生成
-    const resultImage = await generateImage(prompt);
-    if (!resultImage) {
-      return c.json({ error: "Image generation failed" }, 500);
+    const { prompt } = await c.req.json();
+    if (!prompt) throw new Error("Prompt is required");
+
+    const imageData = await generateImage({
+      prompt,
+      height: 512,
+      width: 512,
+      numSteps: 20,
+      guidance: 1,
+    });
+
+    const filename = `image_${Date.now()}.png`;
+    const filePath = await saveImage(filename, imageData);
+
+    return c.json({ success: true, path: filePath });
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return c.json({ success: false, error: error.message }, 400);
     }
-
-    // 画像保存
-    const timestamp = Date.now();
-    const filename = `generated_image_${timestamp}.png`;
-    const filePath = await saveImage(filename, resultImage);
-
-    if (!filePath) {
-      return c.json({ error: "Failed to save image" }, 500);
-    }
-
-    return c.json({ message: "Image generated successfully", path: filePath });
-  } catch (error) {
-    console.error("Error processing request:", error);
-    return c.json({ error: "Server error" }, 500);
+    return c.json({ success: false, error: "Unknown error occurred" }, 400);
   }
 });
 
-export default app;
+app.post("/judge", async (c) => {
+  try {
+    const imageBuffer = await c.req.arrayBuffer();
+    if (!imageBuffer) throw new Error("Image data is required");
+
+    const result = await classifyImage(new Uint8Array(imageBuffer));
+    return c.json({ success: true, result });
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      return c.json({ success: false, error: error.message }, 400);
+    }
+    return c.json({ success: false, error: "Unknown error occurred" }, 400);
+  }
+});
+app.post("/summarize", async (c) => {
+  try {
+    const { text } = await c.req.json();
+    if (!text) {
+      return c.json({ error: "Text is required" }, 400);
+    }
+
+    const response = await summarizeText({ text, maxLength: 1024 });
+
+    if (
+      !response ||
+      !response.result ||
+      typeof response.result.summary !== "string"
+    ) {
+      return c.json({ error: "Invalid API response format" }, 500);
+    }
+
+    const cleanSummary = response.result.summary.replace(/\n/g, " ").trim();
+
+    return c.json({ summary: cleanSummary });
+  } catch (error) {
+    return c.json({ error: "Failed to summarize text" }, 500);
+  }
+});
 
 Bun.serve({
   fetch: app.fetch,
   port: 8080,
 });
+
+export default app;
